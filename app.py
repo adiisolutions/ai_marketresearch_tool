@@ -15,7 +15,7 @@ if not OPENROUTER_API_KEY:
 
 # --- Input Section ---
 st.markdown("### Paste market content (or website data) below:")
-scraped_text = st.text_area("Input content:", height=200)  # Made the input box smaller
+scraped_text = st.text_area("Input content:", height=200)
 
 # --- Summary Length Selection ---
 st.markdown("### Choose summary length:")
@@ -52,8 +52,7 @@ if st.button("Generate AI Summary"):
         with st.spinner("Generating summary... please wait"):
             prompt = (
                 f"Expand and summarize the following market content into about {final_word_limit} words. "
-                "Make it clear, professional, and useful for business research:\n\n"
-                f"{scraped_text}"
+                f"Make it detailed, clear, and useful for business research:\n\n{scraped_text}"
             )
 
             headers = {
