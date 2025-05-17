@@ -2,19 +2,18 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import time
-from openai import OpenAI, APIStatusError
+import httpx
 
-# Set up OpenAI client using Streamlit secrets
-client = OpenAI(api_key=st.secrets["openai_api_key"])
+# Get OpenRouter API key from secrets
+API_KEY = st.secrets["openrouter_api_key"]
+API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-st.set_page_config(page_title="AI Market Research Tool")
-st.title("AI Market Research Tool")
-st.write("Enter a business website URL below to get a market research summary.")
+st.set_page_config(page_title="AI Market Research Tool (OpenRouter)")
+st.title("AI Market Research Tool using OpenRouter")
+st.write("Enter a business website URL to get a market research summary.")
 
-# Input for website URL
 url = st.text_input("Website URL", placeholder="https://example.com")
 
-# Function to scrape the content of a webpage
 def scrape_website(url):
     try:
         response = requests.get(url, timeout=10)
@@ -22,38 +21,44 @@ def scrape_website(url):
         for script in soup(["script", "style"]):
             script.decompose()
         text = ' '.join(soup.stripped_strings)
-        return text[:4000]  # Limit to 4000 characters
+        return text[:4000]  # Limit text length to 4000 chars
     except Exception as e:
         return f"Error scraping website: {e}"
 
-# Function to generate summary using OpenAI with retry handling
 def generate_summary(content):
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json",
+    }
+    json_data = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": "You are a helpful market research assistant."},
+            {"role": "user", "content": f"Summarize this business website content:\n\n{content}"}
+        ]
+    }
+
     retries = 3
     for i in range(retries):
         try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a helpful market research assistant."},
-                    {"role": "user", "content": f"Summarize this business website content:\n\n{content}"}
-                ]
-            )
-            return response.choices[0].message.content.strip()
-        except APIStatusError as e:
-            if "rate_limit" in str(e).lower():
-                if i < retries - 1:
-                    time.sleep(2)
-                else:
-                    return "Rate limit exceeded. Please try again later."
+            with httpx.Client(timeout=30) as client:
+                response = client.post(API_URL, headers=headers, json=json_data)
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]["content"].strip()
+        except httpx.HTTPStatusError as e:
+            if response.status_code == 429 and i < retries - 1:
+                time.sleep(2)
             else:
-                return f"OpenAI API error: {e}"
+                return "Rate limit exceeded or HTTP error. Please try again later."
+        except Exception as e:
+            return f"Error: {e}"
 
-# Run when user enters a URL
 if url:
     with st.spinner("Scraping website..."):
         scraped_content = scrape_website(url)
 
-    if "Error" not in scraped_content:
+    if not scraped_content.startswith("Error"):
         with st.spinner("Generating summary..."):
             summary = generate_summary(scraped_content)
         st.subheader("Market Research Summary")
