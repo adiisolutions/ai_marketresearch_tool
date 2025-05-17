@@ -1,33 +1,26 @@
 import streamlit as st
 import requests
 import os
-from bs4 import BeautifulSoup
 
-# --- Configuration ---
-st.set_page_config(page_title="Market Research Tool", layout="centered")
+# --- Page Config ---
+st.set_page_config(page_title="Market Research Tool", layout="wide")
 st.title("AI Market Research Summary Tool")
 
-# --- API Key ---
+# --- API Key Setup ---
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY"))
+
 if not OPENROUTER_API_KEY:
-    st.error("API key missing. Set it in Streamlit secrets or environment variables.")
+    st.error("OpenRouter API key is missing. Set it in Streamlit secrets or environment variables.")
     st.stop()
 
-# --- Layout: Side-by-side Inputs ---
-col1, col2 = st.columns(2)
+# --- Input Area ---
+st.markdown("### Paste market content or scraped data below:")
+scraped_text = st.text_area("Input content:", height=200)  # reduced height for cleaner UI
 
-with col1:
-    st.markdown("**Option 1: Enter website URL**")
-    url_input = st.text_input("Website URL (e.g. https://example.com)", label_visibility="collapsed")
-
-with col2:
-    st.markdown("**Option 2: Paste content manually**")
-    scraped_text = st.text_area("Paste Content Here", height=150, label_visibility="collapsed")
-
-# --- Summary Options ---
-st.markdown("### Summary Length")
+# --- Summary Length Options ---
+st.markdown("### Choose summary length:")
 summary_length = st.selectbox(
-    "Choose summary length:",
+    "Select a summary style:",
     options=[
         "300 words – Quick overview",
         "500–800 words – Detailed summary",
@@ -36,8 +29,9 @@ summary_length = st.selectbox(
     ]
 )
 
+# --- Word Limit Logic ---
 if summary_length == "Custom word limit":
-    custom_limit = st.number_input("Enter custom word limit:", min_value=100, max_value=5000, step=50)
+    custom_limit = st.number_input("Enter your custom word limit:", min_value=100, max_value=5000, step=50)
     final_word_limit = custom_limit
 elif "300" in summary_length:
     final_word_limit = 300
@@ -50,59 +44,55 @@ else:
 
 st.info(f"Summary will be around **{final_word_limit} words**.")
 
-# --- Scrape Function ---
-def scrape_website(url):
-    try:
-        res = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-        soup = BeautifulSoup(res.text, "html.parser")
-        paragraphs = soup.find_all(["p", "h1", "h2", "h3", "li"])
-        text = "\n".join(p.get_text() for p in paragraphs)
-        return text.strip()
-    except Exception as e:
-        return f"Error scraping site: {e}"
-
-# --- Summary Button ---
-if st.button("Generate AI Summary", use_container_width=True):
-    content_to_summarize = scraped_text
-
-    if url_input:
-        with st.spinner("Scraping website content..."):
-            scraped = scrape_website(url_input)
-            if scraped.startswith("Error scraping site:"):
-                st.error(scraped)
-                st.stop()
-            elif len(scraped.strip()) < 100:
-                st.warning("The website content seems too short or empty. Try a different URL or paste text manually.")
-                st.stop()
-            else:
-                content_to_summarize = scraped
-
-    if not content_to_summarize.strip():
-        st.warning("No content to summarize. Please paste text or enter a valid URL.")
+# --- Generate Summary Button ---
+if st.button("Generate AI Summary"):
+    if not scraped_text.strip():
+        st.warning("Please paste content to summarize.")
     else:
-        with st.spinner("Generating summary..."):
-            prompt = f"Summarize the following market content in about {final_word_limit} words:\n\n{content_to_summarize}"
+        with st.spinner("Generating summary... please wait"):
+            # --- Updated Prompt for Smart Expansion ---
+            prompt = f"""
+You are a market research analyst.
 
+The content provided below may be short, unstructured, or lacking in detail.
+Your task is to expand and convert it into a professional, easy-to-read market research summary of approximately {final_word_limit} words.
+
+Your summary should include:
+- Key market points and insights
+- Trends or patterns (even if inferred)
+- Possible business implications
+- Actionable advice or recommendations
+- Well-structured sections with headings
+
+If details are missing, intelligently elaborate based on common market knowledge. Do NOT fabricate fake statistics, but it's okay to generalize.
+
+Here is the raw input:
+
+\"\"\"{scraped_text}\"\"\"
+"""
+
+            # --- API Request ---
             headers = {
                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                 "Content-Type": "application/json"
             }
 
             payload = {
-                "model": "gpt-3.5-turbo",
+                "model": "openrouter/openai/gpt-3.5-turbo",  # Replace with a valid model ID if needed
                 "messages": [
-                    {"role": "system", "content": "You are a professional market research analyst."},
+                    {"role": "system", "content": "You are a helpful and knowledgeable market research expert."},
                     {"role": "user", "content": prompt}
                 ]
             }
 
             response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
 
+            # --- Handle Response ---
             if response.status_code == 200:
                 result = response.json()
                 summary = result["choices"][0]["message"]["content"]
-                st.toast("Summary ready!", icon="✅")
-                st.text_area("AI-Generated Summary", value=summary, height=300)
+                st.success("Summary generated successfully!")
+                st.text_area("AI-Generated Summary:", value=summary, height=400)
             else:
                 st.error(f"Failed to generate summary. Status: {response.status_code}")
                 st.json(response.json())
