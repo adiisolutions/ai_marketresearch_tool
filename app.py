@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import os
 
-# --- Page Config ---
+# --- Page Configuration ---
 st.set_page_config(page_title="Market Research Tool", layout="wide")
 st.title("AI Market Research Summary Tool")
 
@@ -10,17 +10,17 @@ st.title("AI Market Research Summary Tool")
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY"))
 
 if not OPENROUTER_API_KEY:
-    st.error("OpenRouter API key is missing. Set it in Streamlit secrets or environment variables.")
+    st.error("OpenRouter API key is missing. Please set it in Streamlit secrets or environment variables.")
     st.stop()
 
-# --- Input Area ---
-st.markdown("### Paste market content or scraped data below:")
-scraped_text = st.text_area("Input content:", height=200)  # reduced height for cleaner UI
+# --- Input Section ---
+st.markdown("### Paste market content or website text below:")
+scraped_text = st.text_area("Input content:", height=200)
 
-# --- Summary Length Options ---
+# --- Summary Length Selection ---
 st.markdown("### Choose summary length:")
 summary_length = st.selectbox(
-    "Select a summary style:",
+    "Select summary style:",
     options=[
         "300 words – Quick overview",
         "500–800 words – Detailed summary",
@@ -29,7 +29,7 @@ summary_length = st.selectbox(
     ]
 )
 
-# --- Word Limit Logic ---
+# --- Determine word limit ---
 if summary_length == "Custom word limit":
     custom_limit = st.number_input("Enter your custom word limit:", min_value=100, max_value=5000, step=50)
     final_word_limit = custom_limit
@@ -42,43 +42,43 @@ elif "1500+" in summary_length:
 else:
     final_word_limit = 500
 
-st.info(f"Summary will be around **{final_word_limit} words**.")
+st.info(f"Summary will be about **{final_word_limit} words**.")
 
-# --- Generate Summary Button ---
+# --- Generate Summary ---
 if st.button("Generate AI Summary"):
     if not scraped_text.strip():
-        st.warning("Please paste content to summarize.")
+        st.warning("Please paste some content to summarize.")
     else:
+        if len(scraped_text.strip()) < 100:
+            st.info("The input content is short. The AI will expand it into a detailed summary.")
+
         with st.spinner("Generating summary... please wait"):
-            # --- Updated Prompt for Smart Expansion ---
             prompt = f"""
 You are a market research analyst.
 
-The content provided below may be short, unstructured, or lacking in detail.
-Your task is to expand and convert it into a professional, easy-to-read market research summary of approximately {final_word_limit} words.
+The content below may be short or unstructured.
+Please expand and convert it into a detailed, professional market research summary of about {final_word_limit} words.
 
-Your summary should include:
-- Key market points and insights
-- Trends or patterns (even if inferred)
-- Possible business implications
-- Actionable advice or recommendations
-- Well-structured sections with headings
+Include:
+- Key points and insights
+- Trends and patterns (even if inferred)
+- Business implications
+- Recommendations
+- Structured sections with headings
 
-If details are missing, intelligently elaborate based on common market knowledge. Do NOT fabricate fake statistics, but it's okay to generalize.
+If the input lacks detail, intelligently elaborate using common market knowledge without fabricating fake data.
 
-Here is the raw input:
-
+Content:
 \"\"\"{scraped_text}\"\"\"
 """
 
-            # --- API Request ---
             headers = {
                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                 "Content-Type": "application/json"
             }
 
             payload = {
-                "model": "openrouter/openai/gpt-3.5-turbo",  # Replace with a valid model ID if needed
+                "model": "openrouter/openai/gpt-3.5-turbo",
                 "messages": [
                     {"role": "system", "content": "You are a helpful and knowledgeable market research expert."},
                     {"role": "user", "content": prompt}
@@ -87,7 +87,6 @@ Here is the raw input:
 
             response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
 
-            # --- Handle Response ---
             if response.status_code == 200:
                 result = response.json()
                 summary = result["choices"][0]["message"]["content"]
