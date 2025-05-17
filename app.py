@@ -1,48 +1,46 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-import os
 from openai import OpenAI
 
-# Setup OpenAI client using the new API
-client = OpenAI(api_key=st.secrets.get("openai_api_key", "sk-..."))
+# Set up the OpenAI client using the key from secrets
+client = OpenAI(api_key=st.secrets["openai_api_key"])
 
-st.set_page_config(page_title="Market Research Tool", layout="centered")
-st.title("AI Market Research Agent")
-st.write("Enter a website URL and get a sales-pitch-ready summary.")
-
-# Input
-url = st.text_input("Enter the Website URL:", placeholder="https://example.com")
-generate = st.button("Generate Summary")
-
-
+# Function to scrape website text
 def scrape_website(url):
     try:
         response = requests.get(url, timeout=10)
         soup = BeautifulSoup(response.text, "html.parser")
-        return soup.get_text()
+        # Extract visible text
+        texts = soup.stripped_strings
+        return " ".join(texts)[:4000]  # Limit to 4000 characters for token limit
     except Exception as e:
-        return f"Error scraping website: {str(e)}"
+        return f"Error scraping website: {e}"
 
-
+# Function to generate a summary using OpenAI
 def generate_summary(content):
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant that summarizes website content for a sales pitch."},
-            {"role": "user", "content": f"Summarize this for a sales pitch:\n\n{content}"}
-        ]
-    )
-    return response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful market research assistant."},
+                {"role": "user", "content": f"Summarize this business website content in a human-readable format for sales research:\n\n{content}"}
+            ]
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Error generating summary: {e}"
 
+# Streamlit interface
+st.title("Market Research AI Tool")
+url = st.text_input("Enter website URL")
 
-# Action
-if generate and url:
-    scraped_content = scrape_website(url)
-    if "Error" in scraped_content:
-        st.error(scraped_content)
-    else:
-        with st.spinner("Generating summary..."):
+if st.button("Generate Summary") and url:
+    with st.spinner("Scraping and analyzing..."):
+        scraped_content = scrape_website(url)
+        if scraped_content.startswith("Error"):
+            st.error(scraped_content)
+        else:
             summary = generate_summary(scraped_content)
-            st.success("Summary generated!")
+            st.subheader("Summary:")
             st.write(summary)
