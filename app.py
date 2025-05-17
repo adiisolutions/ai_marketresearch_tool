@@ -53,7 +53,7 @@ st.info(f"Summary will be around **{final_word_limit} words**.")
 # --- Scrape Function ---
 def scrape_website(url):
     try:
-        res = requests.get(url, timeout=10)
+        res = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
         soup = BeautifulSoup(res.text, "html.parser")
         paragraphs = soup.find_all(["p", "h1", "h2", "h3", "li"])
         text = "\n".join(p.get_text() for p in paragraphs)
@@ -67,7 +67,15 @@ if st.button("Generate AI Summary", use_container_width=True):
 
     if url_input:
         with st.spinner("Scraping website content..."):
-            content_to_summarize = scrape_website(url_input)
+            scraped = scrape_website(url_input)
+            if scraped.startswith("Error scraping site:"):
+                st.error(scraped)
+                st.stop()
+            elif len(scraped.strip()) < 100:
+                st.warning("The website content seems too short or empty. Try a different URL or paste text manually.")
+                st.stop()
+            else:
+                content_to_summarize = scraped
 
     if not content_to_summarize.strip():
         st.warning("No content to summarize. Please paste text or enter a valid URL.")
