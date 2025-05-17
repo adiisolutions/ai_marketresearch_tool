@@ -7,6 +7,8 @@ st.set_page_config(page_title="Market Research Tool", layout="wide")
 st.title("AI Market Research Summary Tool")
 
 # --- API Key Setup ---
+# For local use, ensure OPENROUTER_API_KEY is set in environment variables
+# For Streamlit Cloud, set this in Settings > Secrets
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY"))
 
 if not OPENROUTER_API_KEY:
@@ -58,7 +60,7 @@ if st.button("Generate AI Summary"):
             }
 
             payload = {
-                "model": "openrouter/openai/gpt-3.5-turbo",
+                "model": "gpt-3.5-turbo",
                 "messages": [
                     {"role": "system", "content": "You are a professional market research analyst."},
                     {"role": "user", "content": prompt}
