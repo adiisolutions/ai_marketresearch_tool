@@ -1,78 +1,79 @@
 import streamlit as st
 import requests
-from bs4 import BeautifulSoup
-import time
-import httpx
+import os
 
-# Get OpenRouter API key from secrets
-API_KEY = st.secrets["openrouter_api_key"]
-API_URL = "https://openrouter.ai/api/v1/chat/completions"
+# --- Configuration ---
+st.set_page_config(page_title="Market Research Tool", layout="wide")
+st.title("AI Market Research Summary Tool")
 
-st.set_page_config(page_title="AI Market Research Tool (OpenRouter)")
-st.title("AI Market Research Tool using OpenRouter")
-st.write("Enter a business website URL to get a detailed market research analysis.")
+# --- API Key Setup ---
+# For local use, ensure OPENROUTER_API_KEY is set in environment variables
+# For Streamlit Cloud, set this in Settings > Secrets
+OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY"))
 
-url = st.text_input("Website URL", placeholder="https://example.com")
+if not OPENROUTER_API_KEY:
+    st.error("OpenRouter API key is missing. Set it in Streamlit secrets or environment variables.")
+    st.stop()
 
-def scrape_website(url):
-    try:
-        response = requests.get(url, timeout=10)
-        soup = BeautifulSoup(response.content, "html.parser")
-        for script in soup(["script", "style"]):
-            script.decompose()
-        text = ' '.join(soup.stripped_strings)
-        return text[:4000]  # Limit to first 4000 chars to avoid token limits
-    except Exception as e:
-        return f"Error scraping website: {e}"
+# --- Input Section ---
+st.markdown("### Paste market content (or website data) below:")
+scraped_text = st.text_area("Input content:", height=300)
 
-def generate_summary(content):
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json",
-    }
-    json_data = {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": "You are a market research expert."},
-            {"role": "user", "content": f"""
-You are a market research expert. Analyze the following business website content carefully and provide:
+# --- Summary Length Selection ---
+st.markdown("### Choose summary length:")
+summary_length = st.selectbox(
+    "Select a summary style:",
+    options=[
+        "300 words – Quick overview",
+        "500–800 words – Detailed summary",
+        "1500+ words – In-depth market insight",
+        "Custom word limit"
+    ]
+)
 
-1. A detailed explanation of what the business does.
-2. Its target audience.
-3. Unique selling points.
-4. Potential market challenges.
-5. Suggestions for improving marketing or sales strategies.
+# Word limit logic
+if summary_length == "Custom word limit":
+    custom_limit = st.number_input("Enter your custom word limit:", min_value=100, max_value=5000, step=50)
+    final_word_limit = custom_limit
+elif "300" in summary_length:
+    final_word_limit = 300
+elif "500–800" in summary_length:
+    final_word_limit = 650
+elif "1500+" in summary_length:
+    final_word_limit = 1800
+else:
+    final_word_limit = 500
 
-Content to analyze:
-{content}
-"""}
-        ]
-    }
+st.info(f"Summary will be around **{final_word_limit} words**.")
 
-    retries = 3
-    for i in range(retries):
-        try:
-            with httpx.Client(timeout=30) as client:
-                response = client.post(API_URL, headers=headers, json=json_data)
-            response.raise_for_status()
-            data = response.json()
-            return data["choices"][0]["message"]["content"].strip()
-        except httpx.HTTPStatusError as e:
-            if response.status_code == 429 and i < retries - 1:
-                time.sleep(2)
-            else:
-                return "Rate limit exceeded or HTTP error. Please try again later."
-        except Exception as e:
-            return f"Error: {e}"
-
-if url:
-    with st.spinner("Scraping website..."):
-        scraped_content = scrape_website(url)
-
-    if not scraped_content.startswith("Error"):
-        with st.spinner("Generating detailed market research..."):
-            summary = generate_summary(scraped_content)
-        st.subheader("Detailed Market Research Analysis")
-        st.write(summary)
+# --- Generate Summary Button ---
+if st.button("Generate AI Summary"):
+    if not scraped_text.strip():
+        st.warning("Please paste content to summarize.")
     else:
-        st.error(scraped_content)
+        with st.spinner("Generating summary... please wait"):
+            prompt = f"Summarize the following market content in about {final_word_limit} words:\n\n{scraped_text}"
+
+            headers = {
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            }
+
+            payload = {
+                "model": "openrouter/openai/gpt-3.5-turbo",  # or change to another OpenRouter model
+                "messages": [
+                    {"role": "system", "content": "You are a professional market research analyst."},
+                    {"role": "user", "content": prompt}
+                ]
+            }
+
+            response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+
+            if response.status_code == 200:
+                result = response.json()
+                summary = result["choices"][0]["message"]["content"]
+                st.success("Summary generated successfully!")
+                st.text_area("AI-Generated Summary:", value=summary, height=300)
+            else:
+                st.error(f"Failed to generate summary. Status: {response.status_code}")
+                st.json(response.json())
