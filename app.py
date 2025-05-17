@@ -10,7 +10,7 @@ API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 st.set_page_config(page_title="AI Market Research Tool (OpenRouter)")
 st.title("AI Market Research Tool using OpenRouter")
-st.write("Enter a business website URL to get a market research summary.")
+st.write("Enter a business website URL to get a detailed market research analysis.")
 
 url = st.text_input("Website URL", placeholder="https://example.com")
 
@@ -21,7 +21,7 @@ def scrape_website(url):
         for script in soup(["script", "style"]):
             script.decompose()
         text = ' '.join(soup.stripped_strings)
-        return text[:4000]  # Limit text length to 4000 chars
+        return text[:4000]  # Limit to first 4000 chars to avoid token limits
     except Exception as e:
         return f"Error scraping website: {e}"
 
@@ -33,8 +33,19 @@ def generate_summary(content):
     json_data = {
         "model": "gpt-4o-mini",
         "messages": [
-            {"role": "system", "content": "You are a helpful market research assistant."},
-            {"role": "user", "content": f"Summarize this business website content:\n\n{content}"}
+            {"role": "system", "content": "You are a market research expert."},
+            {"role": "user", "content": f"""
+You are a market research expert. Analyze the following business website content carefully and provide:
+
+1. A detailed explanation of what the business does.
+2. Its target audience.
+3. Unique selling points.
+4. Potential market challenges.
+5. Suggestions for improving marketing or sales strategies.
+
+Content to analyze:
+{content}
+"""}
         ]
     }
 
@@ -59,9 +70,9 @@ if url:
         scraped_content = scrape_website(url)
 
     if not scraped_content.startswith("Error"):
-        with st.spinner("Generating summary..."):
+        with st.spinner("Generating detailed market research..."):
             summary = generate_summary(scraped_content)
-        st.subheader("Market Research Summary")
+        st.subheader("Detailed Market Research Analysis")
         st.write(summary)
     else:
         st.error(scraped_content)
