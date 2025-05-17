@@ -56,19 +56,18 @@ if st.button("Generate AI Summary"):
             prompt = f"""
 You are a market research analyst.
 
-The content below may be short or unstructured.
-Please expand and convert it into a detailed, professional market research summary of about {final_word_limit} words.
+Please write a detailed market research summary of approximately {final_word_limit} words, even if the input content is short.
 
-Include:
+Make sure the summary includes:
 - Key points and insights
 - Trends and patterns (even if inferred)
 - Business implications
 - Recommendations
-- Structured sections with headings
+- Well-structured sections with headings
 
-If the input lacks detail, intelligently elaborate using common market knowledge without fabricating fake data.
+If the input text is brief, expand and elaborate using general market knowledge without inventing false facts.
 
-Content:
+Here is the content to summarize:
 \"\"\"{scraped_text}\"\"\"
 """
 
