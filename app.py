@@ -1,28 +1,33 @@
 import streamlit as st
 import requests
 import os
+from bs4 import BeautifulSoup
 
 # --- Configuration ---
-st.set_page_config(page_title="Market Research Tool", layout="wide")
+st.set_page_config(page_title="Market Research Tool", layout="centered")
 st.title("AI Market Research Summary Tool")
 
-# --- API Key Setup ---
-# For local use, ensure OPENROUTER_API_KEY is set in environment variables
-# For Streamlit Cloud, set this in Settings > Secrets
+# --- API Key ---
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY"))
-
 if not OPENROUTER_API_KEY:
-    st.error("OpenRouter API key is missing. Set it in Streamlit secrets or environment variables.")
+    st.error("API key missing. Set it in Streamlit secrets or environment variables.")
     st.stop()
 
-# --- Input Section ---
-st.markdown("### Paste market content (or website data) below:")
-scraped_text = st.text_area("Input content:", height=300)
+# --- Layout: Side-by-side Inputs ---
+col1, col2 = st.columns(2)
 
-# --- Summary Length Selection ---
-st.markdown("### Choose summary length:")
+with col1:
+    st.markdown("**Option 1: Enter website URL**")
+    url_input = st.text_input("Website URL (e.g. https://example.com)", label_visibility="collapsed")
+
+with col2:
+    st.markdown("**Option 2: Paste content manually**")
+    scraped_text = st.text_area("Paste Content Here", height=150, label_visibility="collapsed")
+
+# --- Summary Options ---
+st.markdown("### Summary Length")
 summary_length = st.selectbox(
-    "Select a summary style:",
+    "Choose summary length:",
     options=[
         "300 words – Quick overview",
         "500–800 words – Detailed summary",
@@ -31,9 +36,8 @@ summary_length = st.selectbox(
     ]
 )
 
-# Word limit logic
 if summary_length == "Custom word limit":
-    custom_limit = st.number_input("Enter your custom word limit:", min_value=100, max_value=5000, step=50)
+    custom_limit = st.number_input("Enter custom word limit:", min_value=100, max_value=5000, step=50)
     final_word_limit = custom_limit
 elif "300" in summary_length:
     final_word_limit = 300
@@ -46,13 +50,30 @@ else:
 
 st.info(f"Summary will be around **{final_word_limit} words**.")
 
-# --- Generate Summary Button ---
-if st.button("Generate AI Summary"):
-    if not scraped_text.strip():
-        st.warning("Please paste content to summarize.")
+# --- Scrape Function ---
+def scrape_website(url):
+    try:
+        res = requests.get(url, timeout=10)
+        soup = BeautifulSoup(res.text, "html.parser")
+        paragraphs = soup.find_all(["p", "h1", "h2", "h3", "li"])
+        text = "\n".join(p.get_text() for p in paragraphs)
+        return text.strip()
+    except Exception as e:
+        return f"Error scraping site: {e}"
+
+# --- Summary Button ---
+if st.button("Generate AI Summary", use_container_width=True):
+    content_to_summarize = scraped_text
+
+    if url_input:
+        with st.spinner("Scraping website content..."):
+            content_to_summarize = scrape_website(url_input)
+
+    if not content_to_summarize.strip():
+        st.warning("No content to summarize. Please paste text or enter a valid URL.")
     else:
-        with st.spinner("Generating summary... please wait"):
-            prompt = f"Summarize the following market content in about {final_word_limit} words:\n\n{scraped_text}"
+        with st.spinner("Generating summary..."):
+            prompt = f"Summarize the following market content in about {final_word_limit} words:\n\n{content_to_summarize}"
 
             headers = {
                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -72,8 +93,8 @@ if st.button("Generate AI Summary"):
             if response.status_code == 200:
                 result = response.json()
                 summary = result["choices"][0]["message"]["content"]
-                st.success("Summary generated successfully!")
-                st.text_area("AI-Generated Summary:", value=summary, height=300)
+                st.toast("Summary ready!", icon="✅")
+                st.text_area("AI-Generated Summary", value=summary, height=300)
             else:
                 st.error(f"Failed to generate summary. Status: {response.status_code}")
                 st.json(response.json())
