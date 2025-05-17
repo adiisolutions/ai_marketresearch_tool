@@ -2,8 +2,7 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import time
-from openai import OpenAI
-from openai.error import RateLimitError
+from openai import OpenAI, APIStatusError
 
 # Set up OpenAI client using Streamlit secrets
 client = OpenAI(api_key=st.secrets["openai_api_key"])
@@ -20,7 +19,6 @@ def scrape_website(url):
     try:
         response = requests.get(url, timeout=10)
         soup = BeautifulSoup(response.content, "html.parser")
-        # Extract visible text
         for script in soup(["script", "style"]):
             script.decompose()
         text = ' '.join(soup.stripped_strings)
@@ -28,7 +26,7 @@ def scrape_website(url):
     except Exception as e:
         return f"Error scraping website: {e}"
 
-# Function to generate summary using OpenAI with retry
+# Function to generate summary using OpenAI with retry handling
 def generate_summary(content):
     retries = 3
     for i in range(retries):
@@ -41,11 +39,14 @@ def generate_summary(content):
                 ]
             )
             return response.choices[0].message.content.strip()
-        except RateLimitError:
-            if i < retries - 1:
-                time.sleep(2)  # Wait before retrying
+        except APIStatusError as e:
+            if "rate_limit" in str(e).lower():
+                if i < retries - 1:
+                    time.sleep(2)
+                else:
+                    return "Rate limit exceeded. Please try again later."
             else:
-                return "Rate limit exceeded. Please try again later."
+                return f"OpenAI API error: {e}"
 
 # Run when user enters a URL
 if url:
