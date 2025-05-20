@@ -1,113 +1,68 @@
 import streamlit as st
-import requests
-import os
 import urllib.robotparser
 from urllib.parse import urlparse
 
-# --- Config ---
-st.set_page_config(page_title="Market Research Tool", layout="wide")
-st.title("AI Market Research Summary Tool with robots.txt Compliance")
-
-# --- API Key Setup ---
-OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY"))
-if not OPENROUTER_API_KEY:
-    st.error("OpenRouter API key is missing. Set it in Streamlit secrets or environment variables.")
-    st.stop()
-
-# --- robots.txt check function ---
-def can_scrape(url, user_agent='MarketResearchBot'):
+def can_scrape(url, user_agent="*"):
     parsed_url = urlparse(url)
     base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+    robots_url = f"{base_url}/robots.txt"
     rp = urllib.robotparser.RobotFileParser()
-    rp.set_url(base_url + "/robots.txt")
+    rp.set_url(robots_url)
     try:
         rp.read()
-        return rp.can_fetch(user_agent, url)
-    except:
-        return False  # Be cautious if robots.txt not reachable
+    except Exception:
+        # If can't read robots.txt, allow scraping cautiously
+        return True
+    return rp.can_fetch(user_agent, url)
 
-# --- Input section ---
-st.markdown("### Step 1: Enter the website URL to scrape or paste content manually")
+st.set_page_config(page_title="Market Research Summary Tool with ToS Check", layout="wide")
+st.title("Market Research Summary Tool")
 
-url = st.text_input("Website URL (optional, for scraping):")
+st.markdown("""
+This tool respects website scraping policies via robots.txt.  
+**Please confirm you have the right to scrape and use the data from the provided URL or text input.**  
+""")
 
-manual_text = ""
-content_to_summarize = ""
+tos_confirmed = st.checkbox("I confirm I have read and will comply with the target website's Terms of Service and legal restrictions.")
 
-if url:
-    if can_scrape(url):
-        st.success(f"Scraping is allowed by robots.txt on {url}")
-        # Here you would scrape the website content
-        # For demo, let's just show a placeholder
-        st.info("Scraping website content... (Replace with actual scraping code)")
-        # Example: content_to_summarize = your_scrape_function(url)
-        # For now, ask user to paste scraped text manually:
-        manual_text = st.text_area("Paste scraped content here:", height=200)
+input_type = st.radio("Input type:", ("Paste Text", "Enter URL to scrape"))
+
+user_input = None
+if input_type == "Paste Text":
+    user_input = st.text_area("Paste market content here:", height=200)
+elif input_type == "Enter URL to scrape":
+    user_input = st.text_input("Enter website URL:")
+
+if st.button("Generate Summary"):
+    if not tos_confirmed:
+        st.error("You must confirm compliance with website Terms of Service before proceeding.")
+        st.stop()
+
+    if not user_input or user_input.strip() == "":
+        st.warning("Please provide text or URL input.")
+        st.stop()
+
+    if input_type == "Enter URL to scrape":
+        if not can_scrape(user_input):
+            st.error("Scraping disallowed by website's robots.txt. Please provide text manually or try another URL.")
+            st.stop()
+        else:
+            st.info("Scraping allowed by robots.txt. Proceeding to scrape... (Simulated here)")
+            # Simulate scraping - replace with actual scraping code
+            scraped_text = "Simulated scraped content from the URL."
     else:
-        st.error("Scraping disallowed by robots.txt for this URL. Please paste content manually below.")
-        manual_text = st.text_area("Paste market content manually here:", height=300)
-else:
-    manual_text = st.text_area("Paste market content manually here:", height=300)
+        scraped_text = user_input
 
-content_to_summarize = manual_text.strip()
+    # Simulate AI summary generation (replace this with your AI API call)
+    summary = f"--- AI Generated Summary (Simulated) ---\n\nInput length: {len(scraped_text)} characters.\n\nSummary would be generated here."
 
-# --- Summary length selection ---
-st.markdown("### Step 2: Choose summary length")
+    st.success("Summary generated successfully!")
+    st.text_area("AI-Generated Summary:", value=summary, height=300)
 
-summary_length = st.selectbox(
-    "Select a summary style:",
-    options=[
-        "300 words – Quick overview",
-        "500–800 words – Detailed summary",
-        "1500+ words – In-depth market insight",
-        "Custom word limit"
-    ]
-)
-
-if summary_length == "Custom word limit":
-    custom_limit = st.number_input("Enter your custom word limit:", min_value=100, max_value=5000, step=50)
-    final_word_limit = custom_limit
-elif "300" in summary_length:
-    final_word_limit = 300
-elif "500–800" in summary_length:
-    final_word_limit = 650
-elif "1500+" in summary_length:
-    final_word_limit = 1800
-else:
-    final_word_limit = 500
-
-st.info(f"Summary will be around **{final_word_limit} words**.")
-
-# --- Generate summary ---
-if st.button("Generate AI Summary"):
-    if not content_to_summarize:
-        st.warning("Please provide content by scraping or pasting text.")
-    else:
-        with st.spinner("Generating summary... please wait"):
-            prompt = f"Summarize the following market content in about {final_word_limit} words. " \
-                     f"If the content is short, expand it with relevant insights to make a detailed and clear summary:\n\n{content_to_summarize}"
-
-            headers = {
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json"
-            }
-
-            payload = {
-                "model": "openrouter/mistral",  # change model as needed
-                "messages": [
-                    {"role": "system", "content": "You are a professional market research analyst."},
-                    {"role": "user", "content": prompt}
-                ],
-                "max_tokens": 2000  # adjust if needed based on your quota
-            }
-
-            response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-
-            if response.status_code == 200:
-                result = response.json()
-                summary = result["choices"][0]["message"]["content"]
-                st.success("Summary generated successfully!")
-                st.text_area("AI-Generated Summary:", value=summary, height=300)
-            else:
-                st.error(f"Failed to generate summary. Status: {response.status_code}")
-                st.json(response.json())
+st.markdown("---")
+st.markdown("""
+### Disclaimer  
+This tool checks website `robots.txt` to respect crawling policies but **cannot guarantee full legal compliance** with website Terms of Service or copyright laws.  
+Users are solely responsible for ensuring that their scraping and use of data complies with all applicable laws and website terms.  
+By using this tool, you agree to comply with all relevant legal restrictions.
+""")
