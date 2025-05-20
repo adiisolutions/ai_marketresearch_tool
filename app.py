@@ -1,4 +1,8 @@
-import streamlit as st import requests import os import pyttsx3 from streamlit_chat import message
+import streamlit as st
+import requests
+import os
+import pyttsx3
+from streamlit_chat import message
 
 --- Configuration ---
 
