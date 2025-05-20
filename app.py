@@ -1,12 +1,11 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-from streamlit_chat import message
 from transformers import pipeline
 
-# ---- Page Setup ----
-st.set_page_config(page_title="Market Research Tool", layout="wide")
-st.title("AI Market Research & Chatbot Tool")
+# ---- Setup ----
+st.set_page_config(page_title="Market Research Tool", layout="centered")
+st.title("AI Market Research + Chatbot")
 
 # ---- Session State Init ----
 if 'summary' not in st.session_state:
@@ -16,15 +15,14 @@ if 'messages' not in st.session_state:
 if 'chatbot' not in st.session_state:
     st.session_state.chatbot = False
 
-# ---- Functions ----
+# ---- Scrape & Summarize ----
 @st.cache_data(show_spinner=True)
 def scrape_and_summarize(url, word_limit):
     try:
-        response = requests.get(url, timeout=10)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        paragraphs = soup.find_all('p')
-        content = ' '.join(p.get_text() for p in paragraphs)
-        content = content[:6000]  # Truncate if too long
+        res = requests.get(url, timeout=10)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        content = ' '.join([p.text for p in soup.find_all('p')])
+        content = content[:6000]
 
         summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
         summary = summarizer(content, max_length=word_limit, min_length=100, do_sample=False)[0]['summary_text']
@@ -32,52 +30,50 @@ def scrape_and_summarize(url, word_limit):
     except Exception as e:
         return f"Error: {e}"
 
-# ---- Sidebar ----
+# ---- Sidebar for Input ----
 with st.sidebar:
     st.header("Market Research Tool")
-    url = st.text_input("Enter Company URL")
-    length = st.selectbox("Summary Length", options=["Short (~300 words)", "Detailed (1500+ words)"])
-    word_limit = 300 if "300" in length else 1024  # 1024 is near the model’s max
+    url = st.text_input("Enter Website URL")
+    length = st.selectbox("Summary Length", ["Short (~300 words)", "Detailed (1500+ words)"])
+    word_limit = 300 if "300" in length else 1024
     if st.button("Generate Summary"):
         if url:
-            with st.spinner("Generating summary..."):
-                summary = scrape_and_summarize(url, word_limit)
-                st.session_state.summary = summary
-                st.success("Summary generated!")
+            with st.spinner("Summarizing..."):
+                st.session_state.summary = scrape_and_summarize(url, word_limit)
+                st.session_state.messages = []  # Clear old chat
+                st.success("Summary Ready!")
 
 # ---- Show Summary ----
 if st.session_state.summary:
-    st.subheader("Website Summary")
+    st.subheader("Summary")
     st.write(st.session_state.summary)
 
-# ---- Toggle Chatbot ----
-if st.button("Toggle Chatbot"):
+# ---- Chatbot Toggle ----
+if st.session_state.summary and st.button("Toggle Chatbot"):
     st.session_state.chatbot = not st.session_state.chatbot
 
-# ---- Chatbot Section ----
+# ---- Chatbot Interface ----
 if st.session_state.chatbot:
     st.markdown("---")
-    st.subheader("Ask About the Website")
+    st.subheader("Ask the Chatbot About This Website")
 
     for msg in st.session_state.messages:
-        message(msg["content"], is_user=msg["role"] == "user")
+        role = "You" if msg["role"] == "user" else "Bot"
+        st.markdown(f"**{role}:** {msg['content']}")
 
-    user_input = st.text_input("You:", key="chat_input")
+    user_input = st.text_input("Type your question here:", key="chat_input")
     if user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
 
-        if not st.session_state.summary:
-            response = "Please generate a summary first using the Market Research Tool."
-        elif user_input.lower() in ["hi", "hello", "hey"]:
-            response = "Hi! I'm your website assistant. Ask me anything about the company you searched."
+        if user_input.lower() in ["hi", "hello", "hey"]:
+            reply = "Hi! I’m your assistant. Ask me anything about the website you just searched."
         else:
-            context = st.session_state.summary
-            qa_model = pipeline("question-answering", model="distilbert-base-cased-distilled-squad")
+            qa = pipeline("question-answering", model="distilbert-base-cased-distilled-squad")
             try:
-                answer = qa_model(question=user_input, context=context)
-                response = answer['answer']
+                result = qa(question=user_input, context=st.session_state.summary)
+                reply = result["answer"]
             except:
-                response = "Sorry, I couldn't find an answer to that."
+                reply = "Sorry, I couldn’t find an answer."
 
-        st.session_state.messages.append({"role": "bot", "content": response})
-        message(response, is_user=False)
+        st.session_state.messages.append({"role": "bot", "content": reply})
+        st.markdown(f"**Bot:** {reply}")
