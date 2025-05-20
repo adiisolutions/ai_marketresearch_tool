@@ -4,7 +4,7 @@ import os
 import pyttsx3
 from streamlit_chat import message
 
---- Configuration ---
+# --- Configuration ---
 
 st.set_page_config(page_title="Market Research Tool", layout="wide") st.title("AI Market Research Summary Tool")
 
