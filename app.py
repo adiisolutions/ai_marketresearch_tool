@@ -54,7 +54,7 @@ headers = {
             st.success("Summary generated successfully!")
             st.text_area("AI-Generated Summary:", value=summary, height=300)
 
-            # --- Text-to-Speech ---
+            # Voice Output
             if st.button("Play Summary Audio"):
                 engine = pyttsx3.init()
                 engine.say(summary)
@@ -63,27 +63,33 @@ headers = {
             st.error(f"Failed to generate summary. Status: {response.status_code}")
             st.json(response.json())
 
---- Chatbot Section ---
+--- Chatbot ---
 
-st.markdown("### Ask questions about the content:") if scraped_text: user_question = st.text_input("Your question:") if user_question: chat_prompt = f"Based on the following content, answer the user's question.\n\nContent: {scraped_text}\n\nQuestion: {user_question}"
+st.markdown("---") st.markdown("### Ask Questions About the Content") if scraped_text: user_question = st.text_input("Ask a question about the pasted content:") if user_question: chatbot_prompt = f"Based on this content, answer the question clearly:\n\nCONTENT:\n{scraped_text}\n\nQUESTION:\n{user_question}"
 
-chat_payload = {
+headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
         "model": "mistralai/mistral-7b-instruct",
         "messages": [
-            {"role": "system", "content": "You are a helpful assistant who answers based on provided content."},
-            {"role": "user", "content": chat_prompt}
+            {"role": "system", "content": "You are an assistant that answers based on provided market research."},
+            {"role": "user", "content": chatbot_prompt}
         ],
         "max_tokens": 1000
     }
 
-    chat_response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=chat_payload)
+    response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
 
-    if chat_response.status_code == 200:
-        answer = chat_response.json()["choices"][0]["message"]["content"]
+    if response.status_code == 200:
+        result = response.json()
+        reply = result["choices"][0]["message"]["content"]
         message(user_question, is_user=True)
-        message(answer)
+        message(reply)
     else:
-        st.error("Chatbot failed to respond.")
+        st.error("Failed to fetch chatbot response.")
 
 --- Disclaimer ---
 
