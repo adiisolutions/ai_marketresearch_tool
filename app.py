@@ -86,8 +86,7 @@ if st.button("Generate AI Summary"):
 # --- Disclaimer ---
 st.markdown("---")
 st.markdown("""
-### Disclaimer  
-This tool uses OpenRouter’s AI and respects model limits (~32,768 tokens max).  
-Input text is automatically trimmed if it exceeds allowed length.  
+### Disclaimer   
 You are responsible for ensuring your use of this tool complies with all applicable laws and website terms.
+Hence chec first if the website is allowing scraping there or not
 """)
