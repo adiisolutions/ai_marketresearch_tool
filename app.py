@@ -16,10 +16,20 @@ if 'messages' not in st.session_state:
     st.session_state.messages = []
 if 'chatbot' not in st.session_state:
     st.session_state.chatbot = False
+
+# Initialize pipelines once, forcing CPU usage with device=-1
 if 'qa_pipeline' not in st.session_state:
-    st.session_state.qa_pipeline = pipeline("question-answering", model="distilbert-base-cased-distilled-squad")
+    st.session_state.qa_pipeline = pipeline(
+        "question-answering",
+        model="distilbert-base-cased-distilled-squad",
+        device=-1
+    )
 if 'summarizer' not in st.session_state:
-    st.session_state.summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
+    st.session_state.summarizer = pipeline(
+        "summarization",
+        model="sshleifer/distilbart-cnn-12-6",
+        device=-1
+    )
 
 # ---- Functions ----
 @st.cache_data(show_spinner=True)
