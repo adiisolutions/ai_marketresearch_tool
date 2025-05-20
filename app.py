@@ -5,73 +5,111 @@ import pyttsx3
 from streamlit_chat import message
 
 # --- Configuration ---
+st.set_page_config(page_title="Market Research Tool", layout="wide")
+st.title("AI Market Research Summary Tool with Voice and Chatbot")
 
-st.set_page_config(page_title="Market Research Tool", layout="wide") st.title("AI Market Research Summary Tool")
-
---- API Key Setup ---
-
+# --- API Key Setup ---
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY"))
+if not OPENROUTER_API_KEY:
+    st.error("OpenRouter API key is missing. Set it in Streamlit secrets or environment variables.")
+    st.stop()
 
-if not OPENROUTER_API_KEY: st.error("OpenRouter API key is missing. Set it in Streamlit secrets or environment variables.") st.stop()
+# --- Initialize Text-to-Speech Engine ---
+tts_engine = pyttsx3.init()
 
---- Input Section ---
+# --- Input Section ---
+st.markdown("### Paste market content (or website data) below:")
+scraped_text = st.text_area("Input content:", height=200)
 
-st.markdown("### Paste market content (or website data) below:") scraped_text = st.text_area("Input content:", height=200)
+# --- Summary Length Selection ---
+st.markdown("### Choose summary length:")
+summary_length = st.selectbox(
+    "Select a summary style:",
+    options=[
+        "300 words – Quick overview",
+        "500–800 words – Detailed summary",
+        "1500+ words – In-depth market insight",
+        "Custom word limit"
+    ]
+)
 
---- Summary Length Selection ---
+# Word limit logic
+if summary_length == "Custom word limit":
+    custom_limit = st.number_input("Enter your custom word limit:", min_value=100, max_value=5000, step=50)
+    final_word_limit = custom_limit
+elif "300" in summary_length:
+    final_word_limit = 300
+elif "500–800" in summary_length:
+    final_word_limit = 650
+elif "1500+" in summary_length:
+    final_word_limit = 1800
+else:
+    final_word_limit = 500
 
-st.markdown("### Choose summary length:") summary_length = st.selectbox( "Select a summary style:", options=[ "300 words – Quick overview", "500–800 words – Detailed summary", "1500+ words – In-depth market insight", "Custom word limit" ] )
+st.info(f"Summary will be around **{final_word_limit} words**.")
 
-Word limit logic
+# --- Token trimming ---
+MAX_INPUT_TOKENS = 28000  # Reserve tokens for output
+if len(scraped_text) > MAX_INPUT_TOKENS:
+    st.warning("Input was too long and has been trimmed to fit the model's context limit.")
+    scraped_text = scraped_text[:MAX_INPUT_TOKENS]
 
-if summary_length == "Custom word limit": custom_limit = st.number_input("Enter your custom word limit:", min_value=100, max_value=5000, step=50) final_word_limit = custom_limit elif "300" in summary_length: final_word_limit = 300 elif "500–800" in summary_length: final_word_limit = 650 elif "1500+" in summary_length: final_word_limit = 1800 else: final_word_limit = 500
+summary_result = ""
 
-st.info(f"Summary will be around {final_word_limit} words.")
+# --- Generate Summary Button ---
+if st.button("Generate AI Summary"):
+    if not scraped_text.strip():
+        st.warning("Please paste content to summarize.")
+    else:
+        with st.spinner("Generating summary... please wait"):
+            prompt = f"Summarize the following market content in about {final_word_limit} words:\n\n{scraped_text}"
 
---- Max Token Handling ---
+            headers = {
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            }
 
-MAX_INPUT_TOKENS = 28000  # Reserve 1,500 for output if len(scraped_text) > MAX_INPUT_TOKENS: st.warning(f"Input was too long and has been automatically trimmed to fit the model's context limit.") scraped_text = scraped_text[:MAX_INPUT_TOKENS]
+            payload = {
+                "model": "mistralai/mistral-7b-instruct",
+                "messages": [
+                    {"role": "system", "content": "You are a professional market research analyst."},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": 1500
+            }
 
---- Generate Summary Button ---
+            response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
 
-if st.button("Generate AI Summary"): if not scraped_text.strip(): st.warning("Please paste content to summarize.") else: with st.spinner("Generating summary... please wait"): prompt = f"Summarize the following market content in about {final_word_limit} words:\n\n{scraped_text}"
+            if response.status_code == 200:
+                result = response.json()
+                summary_result = result["choices"][0]["message"]["content"]
+                st.success("Summary generated successfully!")
+                st.text_area("AI-Generated Summary:", value=summary_result, height=300)
+            else:
+                st.error(f"Failed to generate summary. Status: {response.status_code}")
+                st.json(response.json())
 
-headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json"
-        }
+# --- Voice Output ---
+if summary_result:
+    if st.button("Listen to Summary"):
+        tts_engine.say(summary_result)
+        tts_engine.runAndWait()
 
-        payload = {
-            "model": "mistralai/mistral-7b-instruct",
-            "messages": [
-                {"role": "system", "content": "You are a professional market research analyst."},
-                {"role": "user", "content": prompt}
-            ],
-            "max_tokens": 1500
-        }
+# --- Simple Chatbot using generated summary context ---
+st.markdown("---")
+st.markdown("### Ask questions about the summary")
 
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+if 'chat_history' not in st.session_state:
+    st.session_state['chat_history'] = []
 
-        if response.status_code == 200:
-            result = response.json()
-            summary = result["choices"][0]["message"]["content"]
-            st.success("Summary generated successfully!")
-            st.text_area("AI-Generated Summary:", value=summary, height=300)
+def ask_bot(question):
+    if not summary_result:
+        return "Please generate a summary first."
+    prompt = f"""You are an AI assistant. Based on the following market research summary, answer the user's question:\n
+Summary:\n{summary_result}\n
+Question: {question}\nAnswer:"""
 
-            # Voice Output
-            if st.button("Play Summary Audio"):
-                engine = pyttsx3.init()
-                engine.say(summary)
-                engine.runAndWait()
-        else:
-            st.error(f"Failed to generate summary. Status: {response.status_code}")
-            st.json(response.json())
-
---- Chatbot ---
-
-st.markdown("---") st.markdown("### Ask Questions About the Content") if scraped_text: user_question = st.text_input("Ask a question about the pasted content:") if user_question: chatbot_prompt = f"Based on this content, answer the question clearly:\n\nCONTENT:\n{scraped_text}\n\nQUESTION:\n{user_question}"
-
-headers = {
+    headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
@@ -79,29 +117,35 @@ headers = {
     payload = {
         "model": "mistralai/mistral-7b-instruct",
         "messages": [
-            {"role": "system", "content": "You are an assistant that answers based on provided market research."},
-            {"role": "user", "content": chatbot_prompt}
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt}
         ],
-        "max_tokens": 1000
+        "max_tokens": 500
     }
 
     response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-
     if response.status_code == 200:
-        result = response.json()
-        reply = result["choices"][0]["message"]["content"]
-        message(user_question, is_user=True)
-        message(reply)
+        ans = response.json()["choices"][0]["message"]["content"]
+        return ans.strip()
     else:
-        st.error("Failed to fetch chatbot response.")
+        return f"Error: {response.status_code}"
 
---- Disclaimer ---
+user_question = st.text_input("Enter your question here:")
 
-st.markdown("---") st.markdown("""
+if user_question:
+    answer = ask_bot(user_question)
+    st.session_state.chat_history.append((user_question, answer))
 
-Disclaimer
+if st.session_state.chat_history:
+    for i, (q, a) in enumerate(st.session_state.chat_history):
+        message(q, is_user=True, key=f"q_{i}")
+        message(a, key=f"a_{i}")
 
-This tool uses OpenRouter’s AI and respects model limits (~32,768 tokens max).
-Input text is automatically trimmed if it exceeds allowed length.
-You are responsible for ensuring your use of this tool complies with all applicable laws and website terms. """)
-
+# --- Disclaimer ---
+st.markdown("---")
+st.markdown("""
+### Disclaimer  
+This tool uses OpenRouter’s AI and respects model limits (~32,768 tokens max).  
+Input text is automatically trimmed if it exceeds allowed length.  
+You are responsible for ensuring your use of this tool complies with all applicable laws and website terms.
+""")
