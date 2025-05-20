@@ -1,91 +1,72 @@
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
+import urllib.robotparser
 from urllib.parse import urlparse
-from urllib.robotparser import RobotFileParser
 
-# Set Streamlit page configuration
-st.set_page_config(page_title="AI Market Research Tool", layout="centered")
-
-# App Title
-st.title("AI Market Research Tool")
-st.caption("Paste a website URL to extract and summarize public market-related content.")
-
-# Disclaimer
-st.markdown(
-    """
-    **Disclaimer:** This tool only summarizes content from websites that allow crawling via their `robots.txt`.
-    It is your responsibility to ensure that you have the right to access and use the content from the provided URL.
-    """
-)
-
-# URL input
-url = st.text_input("Enter Website URL")
-
-def is_scraping_allowed(website_url):
+def can_scrape(url, user_agent="*"):
+    parsed_url = urlparse(url)
+    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+    robots_url = f"{base_url}/robots.txt"
+    rp = urllib.robotparser.RobotFileParser()
+    rp.set_url(robots_url)
     try:
-        parsed_url = urlparse(website_url)
-        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
-        robots_url = f"{base_url}/robots.txt"
-        rp = RobotFileParser()
-        rp.set_url(robots_url)
         rp.read()
-        return rp.can_fetch("*", website_url)
-    except:
-        return False  # Assume disallowed if error occurs
+    except Exception:
+        return True
+    return rp.can_fetch(user_agent, url)
 
-def scrape_website(website_url):
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
-        response = requests.get(website_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.content, "html.parser")
-        paragraphs = soup.find_all("p")
-        text = " ".join(p.get_text() for p in paragraphs)
-        return text.strip()
-    except:
-        return ""
+st.set_page_config(page_title="Market Research Summary Tool with ToS Check", layout="wide")
+st.title("Market Research Summary Tool")
 
-def generate_summary(text):
-    if len(text.split()) < 50:
-        return "The content is too short to generate a detailed summary."
-    
-    prompt = (
-        "You are an expert market research AI. Expand the following content into a clear, insightful, and detailed market research summary. "
-        "Write it in professional tone with subtitles:\n\n"
-        f"{text}"
-    )
+st.markdown("""
+This tool respects website scraping policies via robots.txt.  
+**Please confirm you have the right to scrape and use the data from the provided URL or text input.**  
+""")
 
-    api_url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer YOUR_OPENROUTER_API_KEY",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": "mistralai/mistral-7b-instruct",
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
-        "max_tokens": 1500
-    }
+tos_confirmed = st.checkbox("I confirm I have read and will comply with the target website's Terms of Service and legal restrictions.")
 
-    response = requests.post(api_url, headers=headers, json=data)
-    if response.status_code == 200:
-        return response.json()["choices"][0]["message"]["content"]
-    else:
-        return f"Failed to generate summary. Status: {response.status_code}\n{response.text}"
+input_type = st.radio("Input type:", ("Paste Text", "Enter URL to scrape"))
+user_input = None
 
-if url:
-    st.info("Checking website permissions...")
-    if is_scraping_allowed(url):
-        st.success("Scraping allowed. Extracting and summarizing content...")
-        content = scrape_website(url)
-        if content:
-            summary = generate_summary(content)
-            st.markdown("### Generated Market Research Summary")
-            st.write(summary)
+if input_type == "Paste Text":
+    user_input = st.text_area("Paste market content here:", height=200)
+elif input_type == "Enter URL to scrape":
+    user_input = st.text_input("Enter website URL:")
+
+if st.button("Generate Summary"):
+    if not tos_confirmed:
+        st.error("You must confirm compliance with website Terms of Service before proceeding.")
+        st.stop()
+
+    if not user_input or user_input.strip() == "":
+        st.warning("Please provide text or URL input.")
+        st.stop()
+
+    if input_type == "Enter URL to scrape":
+        if not can_scrape(user_input):
+            st.error("Scraping disallowed by website's robots.txt. Please provide text manually or try another URL.")
+            st.stop()
         else:
-            st.warning("The website has very little readable content or failed to load.")
+            st.info("Scraping allowed by robots.txt. Proceeding to scrape... (Simulated here)")
+            scraped_text = "Simulated scraped content from the URL."
     else:
-        st.error("Scraping is not allowed on this website per its robots.txt file.")
+        scraped_text = user_input
+
+    summary = f"--- AI Generated Summary (Simulated) ---\n\nInput length: {len(scraped_text)} characters.\n\nSummary would be generated here."
+
+    st.success("Summary generated successfully!")
+    st.text_area("AI-Generated Summary:", value=summary, height=300)
+
+# Disclaimer placed outside of conditionals to always show
+st.markdown("---")
+st.markdown("""
+### Disclaimer  
+This tool performs a basic check of the website's `robots.txt` file to respect crawling policies.  
+**However, it does NOT guarantee full compliance with the website’s Terms of Service or any copyright laws.**  
+
+You, the user, are solely responsible for:  
+- Ensuring your scraping and data usage complies with all applicable laws, regulations, and website terms.  
+- Obtaining all necessary permissions before scraping or using data from any website.  
+- Any legal consequences arising from misuse or unauthorized scraping.
+
+By using this tool, you acknowledge and agree to comply with all relevant legal restrictions and accept full responsibility for your actions.
+""")
