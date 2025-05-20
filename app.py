@@ -1,68 +1,38 @@
-import streamlit as st
-import urllib.robotparser
-from urllib.parse import urlparse
+import streamlit as st import requests from bs4 import BeautifulSoup from urllib.parse import urlparse from urllib.robotparser import RobotFileParser
 
-def can_scrape(url, user_agent="*"):
-    parsed_url = urlparse(url)
-    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
-    robots_url = f"{base_url}/robots.txt"
-    rp = urllib.robotparser.RobotFileParser()
+def is_scraping_allowed(url): parsed_url = urlparse(url) base_url = f"{parsed_url.scheme}://{parsed_url.netloc}" robots_url = f"{base_url}/robots.txt"
+
+rp = RobotFileParser()
+try:
     rp.set_url(robots_url)
-    try:
-        rp.read()
-    except Exception:
-        # If can't read robots.txt, allow scraping cautiously
-        return True
-    return rp.can_fetch(user_agent, url)
+    rp.read()
+    return rp.can_fetch("*", url)
+except:
+    return False  # Assume disallowed if robots.txt is missing or unreadable
 
-st.set_page_config(page_title="Market Research Summary Tool with ToS Check", layout="wide")
-st.title("Market Research Summary Tool")
+def extract_text_from_url(url): try: response = requests.get(url, timeout=10) soup = BeautifulSoup(response.text, "html.parser") paragraphs = soup.find_all("p") return " ".join([p.get_text() for p in paragraphs]) except: return ""
 
-st.markdown("""
-This tool respects website scraping policies via robots.txt.  
-**Please confirm you have the right to scrape and use the data from the provided URL or text input.**  
-""")
+def generate_summary(content): if len(content) < 100: return "Content too short to summarize effectively."
 
-tos_confirmed = st.checkbox("I confirm I have read and will comply with the target website's Terms of Service and legal restrictions.")
+prompt = f"""
 
-input_type = st.radio("Input type:", ("Paste Text", "Enter URL to scrape"))
+You are a market research AI assistant. Read the following website content and generate a professional, detailed market analysis summary based on it. Focus on the business, offerings, customer appeal, industry trends, and strategic positioning. Make the summary easy to understand even for non-experts:
 
-user_input = None
-if input_type == "Paste Text":
-    user_input = st.text_area("Paste market content here:", height=200)
-elif input_type == "Enter URL to scrape":
-    user_input = st.text_input("Enter website URL:")
+""" prompt += content
 
-if st.button("Generate Summary"):
-    if not tos_confirmed:
-        st.error("You must confirm compliance with website Terms of Service before proceeding.")
-        st.stop()
+headers = {
+    "Authorization": f"Bearer YOUR_OPENROUTER_API_KEY",
+    "HTTP-Referer": "https://yourapp.com",
+    "X-Title": "Market Research AI Tool"
+}
 
-    if not user_input or user_input.strip() == "":
-        st.warning("Please provide text or URL input.")
-        st.stop()
+data = {
+    "model": "openrouter/mistralai/mistral-7b-instruct",
+    "messages": [
+        {"role": "user", "content": prompt},
+    ],
+    "max_tokens": 1500
+}
 
-    if input_type == "Enter URL to scrape":
-        if not can_scrape(user_input):
-            st.error("Scraping disallowed by website's robots.txt. Please provide text manually or try another URL.")
-            st.stop()
-        else:
-            st.info("Scraping allowed by robots.txt. Proceeding to scrape... (Simulated here)")
-            # Simulate scraping - replace with actual scraping code
-            scraped_text = "Simulated scraped content from the URL."
-    else:
-        scraped_text = user_input
+response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data
 
-    # Simulate AI summary generation (replace this with your AI API call)
-    summary = f"--- AI Generated Summary (Simulated) ---\n\nInput length: {len(scraped_text)} characters.\n\nSummary would be generated here."
-
-    st.success("Summary generated successfully!")
-    st.text_area("AI-Generated Summary:", value=summary, height=300)
-
-st.markdown("---")
-st.markdown("""
-### Disclaimer  
-This tool checks website `robots.txt` to respect crawling policies but **cannot guarantee full legal compliance** with website Terms of Service or copyright laws.  
-Users are solely responsible for ensuring that their scraping and use of data complies with all applicable laws and website terms.  
-By using this tool, you agree to comply with all relevant legal restrictions.
-""")
