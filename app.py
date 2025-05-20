@@ -50,10 +50,7 @@ if st.button("Generate AI Summary"):
         st.warning("Please paste content to summarize.")
     else:
         with st.spinner("Generating summary... please wait"):
-            prompt = (
-                f"Expand and summarize the following market content into about {final_word_limit} words. "
-                f"Make it detailed, clear, and useful for business research:\n\n{scraped_text}"
-            )
+            prompt = f"Summarize the following market content in about {final_word_limit} words:\n\n{scraped_text}"
 
             headers = {
                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -61,10 +58,12 @@ if st.button("Generate AI Summary"):
             }
 
             payload = {
-                "model": "anthropic/claude-3-sonnet-20240229",
+                "model": "mistralai/mistral-7b-instruct",  # Mistral model (cheaper + fast)
                 "messages": [
+                    {"role": "system", "content": "You are a professional market research analyst."},
                     {"role": "user", "content": prompt}
-                ]
+                ],
+                "max_tokens": 1500  # reduce if you still hit limits
             }
 
             response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
@@ -75,6 +74,5 @@ if st.button("Generate AI Summary"):
                 st.success("Summary generated successfully!")
                 st.text_area("AI-Generated Summary:", value=summary, height=300)
             else:
-                st.warning("The input content is short. The AI will try to expand it into a detailed summary.")
                 st.error(f"Failed to generate summary. Status: {response.status_code}")
                 st.json(response.json())
