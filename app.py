@@ -8,7 +8,6 @@ st.title("AI Market Research Summary Tool")
 
 # --- API Key Setup ---
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", os.getenv("OPENROUTER_API_KEY"))
-
 if not OPENROUTER_API_KEY:
     st.error("OpenRouter API key is missing. Set it in Streamlit secrets or environment variables.")
     st.stop()
@@ -42,15 +41,19 @@ elif "1500+" in summary_length:
 else:
     final_word_limit = 500
 
-st.info(f"Summary will be around **{final_word_limit} words**.")
+st.info(f"Summary will aim for **{final_word_limit} words** (expanded if needed).")
 
-# --- Generate Summary Button ---
+# --- Generate Summary ---
 if st.button("Generate AI Summary"):
     if not scraped_text.strip():
-        st.warning("Please paste content to summarize.")
+        st.warning("Please paste some content first.")
     else:
-        with st.spinner("Generating summary... please wait"):
-            prompt = f"Summarize the following market content in about {final_word_limit} words:\n\n{scraped_text}"
+        with st.spinner("Generating summary..."):
+            prompt = (
+                f"The content below is from a market website. Expand it into a very detailed summary "
+                f"of about {final_word_limit} words. Even if the original input is short, use domain knowledge, "
+                f"contextual inference, and industry-standard assumptions to generate a rich, full summary:\n\n{scraped_text}"
+            )
 
             headers = {
                 "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -58,12 +61,13 @@ if st.button("Generate AI Summary"):
             }
 
             payload = {
-                "model": "mistralai/mistral-7b-instruct",  # Mistral model (cheaper + fast)
+                "model": "mistralai/mistral-7b-instruct",
                 "messages": [
                     {"role": "system", "content": "You are a professional market research analyst."},
                     {"role": "user", "content": prompt}
                 ],
-                "max_tokens": 1500  # reduce if you still hit limits
+                "max_tokens": 2500,
+                "temperature": 0.7
             }
 
             response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
@@ -72,7 +76,7 @@ if st.button("Generate AI Summary"):
                 result = response.json()
                 summary = result["choices"][0]["message"]["content"]
                 st.success("Summary generated successfully!")
-                st.text_area("AI-Generated Summary:", value=summary, height=300)
+                st.text_area("AI-Generated Summary:", value=summary, height=400)
             else:
-                st.error(f"Failed to generate summary. Status: {response.status_code}")
+                st.error("Failed to generate summary.")
                 st.json(response.json())
