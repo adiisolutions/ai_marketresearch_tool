@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 from transformers import pipeline
 
 # ---- Setup ----
@@ -17,7 +18,7 @@ if 'messages' not in st.session_state:
 if 'chatbot' not in st.session_state:
     st.session_state.chatbot = False
 
-# Initialize pipelines once, forcing CPU usage with device=-1
+# ---- Load Models (once) ----
 if 'qa_pipeline' not in st.session_state:
     st.session_state.qa_pipeline = pipeline(
         "question-answering",
@@ -35,21 +36,37 @@ if 'summarizer' not in st.session_state:
 @st.cache_data(show_spinner=True)
 def scrape_content(url):
     try:
+        parsed = urlparse(url)
+        base_domain = parsed.netloc.replace("www.", "")
         res = requests.get(url, timeout=10)
         soup = BeautifulSoup(res.text, 'html.parser')
-        # Try main content containers, fallback to whole page
-        main_content = soup.find('article') or soup.find('div', class_='main-content') or soup
+
+        # Try to extract main or body content
+        main_content = soup.find('main') or soup.find('body') or soup
+
+        # Remove junk tags
+        for tag in main_content(["script", "style", "noscript", "header", "footer", "nav", "aside"]):
+            tag.decompose()
+
+        # Extract meta description if available
+        meta_desc = soup.find("meta", attrs={"name": "description"}) or \
+                    soup.find("meta", attrs={"property": "og:description"})
+        meta_content = meta_desc["content"] if meta_desc and meta_desc.get("content") else ""
+
+        # Extract clean text from paragraphs
         paragraphs = main_content.find_all('p')
-        content = ' '.join([p.get_text(separator=' ', strip=True) for p in paragraphs])
-        content = content[:10000]  # limit length for performance
-        return content
+        content_texts = [p.get_text(separator=' ', strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 50]
+        content = meta_content + "\n\n" + " ".join(content_texts)
+        return content[:10000]  # limit size
     except Exception as e:
         return f"Error: {e}"
 
 @st.cache_data(show_spinner=True)
 def summarize_text(text, word_limit):
     try:
-        summary = st.session_state.summarizer(text, max_length=word_limit, min_length=100, do_sample=False)[0]['summary_text']
+        summary = st.session_state.summarizer(
+            text, max_length=word_limit, min_length=100, do_sample=False
+        )[0]['summary_text']
         return summary
     except Exception as e:
         return f"Error in summarization: {e}"
@@ -103,7 +120,10 @@ if st.session_state.chatbot:
             reply = "Hi! I’m your assistant. Ask me anything about the website you just searched."
         else:
             try:
-                result = st.session_state.qa_pipeline(question=user_input, context=st.session_state.raw_content)
+                result = st.session_state.qa_pipeline(
+                    question=user_input,
+                    context=st.session_state.raw_content
+                )
                 reply = result["answer"]
             except Exception:
                 reply = "Sorry, I couldn’t find an answer."
